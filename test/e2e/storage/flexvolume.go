@@ -24,14 +24,12 @@ import (
 
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"k8s.io/api/core/v1"
+	"github.com/onsi/ginkgo"
+	v1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
-	versionutil "k8s.io/apimachinery/pkg/util/version"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/version"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubernetes/test/e2e/framework"
+	e2essh "k8s.io/kubernetes/test/e2e/framework/ssh"
 	"k8s.io/kubernetes/test/e2e/framework/testfiles"
 	"k8s.io/kubernetes/test/e2e/framework/volume"
 	"k8s.io/kubernetes/test/e2e/storage/utils"
@@ -94,7 +92,7 @@ func installFlex(c clientset.Interface, node *v1.Node, vendor, driver, filePath 
 	cmd := fmt.Sprintf("sudo mkdir -p %s", flexDir)
 	sshAndLog(cmd, host, true /*failOnError*/)
 
-	data := testfiles.ReadOrDie(filePath, Fail)
+	data := testfiles.ReadOrDie(filePath, ginkgo.Fail)
 	cmd = fmt.Sprintf("sudo tee <<'EOF' %s\n%s\nEOF", flexFile, string(data))
 	sshAndLog(cmd, host, true /*failOnError*/)
 
@@ -136,30 +134,12 @@ func getFlexDir(c clientset.Interface, node *v1.Node, vendor, driver string) str
 }
 
 func sshAndLog(cmd, host string, failOnError bool) {
-	result, err := framework.SSH(cmd, host, framework.TestContext.Provider)
-	framework.LogSSHResult(result)
+	result, err := e2essh.SSH(cmd, host, framework.TestContext.Provider)
+	e2essh.LogResult(result)
 	framework.ExpectNoError(err)
 	if result.Code != 0 && failOnError {
 		framework.Failf("%s returned non-zero, stderr: %s", cmd, result.Stderr)
 	}
-}
-
-func getMasterVersion(c clientset.Interface) (*versionutil.Version, error) {
-	var err error
-	var v *version.Info
-	waitErr := wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
-		v, err = c.Discovery().ServerVersion()
-		return err == nil, nil
-	})
-	if waitErr != nil {
-		return nil, fmt.Errorf("Could not get the master version: %v", waitErr)
-	}
-
-	return versionutil.MustParseSemantic(v.GitVersion), nil
-}
-
-func getNodeVersion(node *v1.Node) *versionutil.Version {
-	return versionutil.MustParseSemantic(node.Status.NodeInfo.KubeletVersion)
 }
 
 func getHostFromHostPort(hostPort string) string {
@@ -184,7 +164,7 @@ var _ = utils.SIGDescribe("Flexvolumes", func() {
 	var config volume.TestConfig
 	var suffix string
 
-	BeforeEach(func() {
+	ginkgo.BeforeEach(func() {
 		framework.SkipUnlessProviderIs("gce", "local")
 		framework.SkipUnlessMasterOSDistroIs("debian", "ubuntu", "gci", "custom")
 		framework.SkipUnlessNodeOSDistroIs("debian", "ubuntu", "gci", "custom")
@@ -202,36 +182,36 @@ var _ = utils.SIGDescribe("Flexvolumes", func() {
 		suffix = ns.Name
 	})
 
-	It("should be mountable when non-attachable", func() {
+	ginkgo.It("should be mountable when non-attachable", func() {
 		driver := "dummy"
 		driverInstallAs := driver + "-" + suffix
 
-		By(fmt.Sprintf("installing flexvolume %s on node %s as %s", path.Join(driverDir, driver), node.Name, driverInstallAs))
+		ginkgo.By(fmt.Sprintf("installing flexvolume %s on node %s as %s", path.Join(driverDir, driver), node.Name, driverInstallAs))
 		installFlex(cs, &node, "k8s", driverInstallAs, path.Join(driverDir, driver))
 
 		testFlexVolume(driverInstallAs, cs, config, f)
 
-		By("waiting for flex client pod to terminate")
+		ginkgo.By("waiting for flex client pod to terminate")
 		if err := f.WaitForPodTerminated(config.Prefix+"-client", ""); !apierrs.IsNotFound(err) {
 			framework.ExpectNoError(err, "Failed to wait client pod terminated: %v", err)
 		}
 
-		By(fmt.Sprintf("uninstalling flexvolume %s from node %s", driverInstallAs, node.Name))
+		ginkgo.By(fmt.Sprintf("uninstalling flexvolume %s from node %s", driverInstallAs, node.Name))
 		uninstallFlex(cs, &node, "k8s", driverInstallAs)
 	})
 
-	It("should be mountable when attachable", func() {
+	ginkgo.It("should be mountable when attachable", func() {
 		driver := "dummy-attachable"
 		driverInstallAs := driver + "-" + suffix
 
-		By(fmt.Sprintf("installing flexvolume %s on node %s as %s", path.Join(driverDir, driver), node.Name, driverInstallAs))
+		ginkgo.By(fmt.Sprintf("installing flexvolume %s on node %s as %s", path.Join(driverDir, driver), node.Name, driverInstallAs))
 		installFlex(cs, &node, "k8s", driverInstallAs, path.Join(driverDir, driver))
-		By(fmt.Sprintf("installing flexvolume %s on master as %s", path.Join(driverDir, driver), driverInstallAs))
+		ginkgo.By(fmt.Sprintf("installing flexvolume %s on master as %s", path.Join(driverDir, driver), driverInstallAs))
 		installFlex(cs, nil, "k8s", driverInstallAs, path.Join(driverDir, driver))
 
 		testFlexVolume(driverInstallAs, cs, config, f)
 
-		By("waiting for flex client pod to terminate")
+		ginkgo.By("waiting for flex client pod to terminate")
 		if err := f.WaitForPodTerminated(config.Prefix+"-client", ""); !apierrs.IsNotFound(err) {
 			framework.ExpectNoError(err, "Failed to wait client pod terminated: %v", err)
 		}
@@ -239,9 +219,9 @@ var _ = utils.SIGDescribe("Flexvolumes", func() {
 		// Detach might occur after pod deletion. Wait before deleting driver.
 		time.Sleep(detachTimeout)
 
-		By(fmt.Sprintf("uninstalling flexvolume %s from node %s", driverInstallAs, node.Name))
+		ginkgo.By(fmt.Sprintf("uninstalling flexvolume %s from node %s", driverInstallAs, node.Name))
 		uninstallFlex(cs, &node, "k8s", driverInstallAs)
-		By(fmt.Sprintf("uninstalling flexvolume %s from master", driverInstallAs))
+		ginkgo.By(fmt.Sprintf("uninstalling flexvolume %s from master", driverInstallAs))
 		uninstallFlex(cs, nil, "k8s", driverInstallAs)
 	})
 })

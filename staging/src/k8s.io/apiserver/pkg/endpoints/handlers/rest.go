@@ -78,7 +78,7 @@ func (scope *RequestScope) err(err error, w http.ResponseWriter, req *http.Reque
 
 func (scope *RequestScope) AllowsConversion(gvk schema.GroupVersionKind, mimeType, mimeSubType string) bool {
 	// TODO: this is temporary, replace with an abstraction calculated at endpoint installation time
-	if gvk.GroupVersion() == metav1beta1.SchemeGroupVersion {
+	if gvk.GroupVersion() == metav1beta1.SchemeGroupVersion || gvk.GroupVersion() == metav1.SchemeGroupVersion {
 		switch gvk.Kind {
 		case "Table":
 			return scope.TableConvertor != nil &&
@@ -229,11 +229,11 @@ func finishRequest(timeout time.Duration, fn resultFunc) (result runtime.Object,
 	}
 }
 
-// transformDecodeError adds additional information when a decode fails.
+// transformDecodeError adds additional information into a bad-request api error when a decode fails.
 func transformDecodeError(typer runtime.ObjectTyper, baseErr error, into runtime.Object, gvk *schema.GroupVersionKind, body []byte) error {
 	objGVKs, _, err := typer.ObjectKinds(into)
 	if err != nil {
-		return err
+		return errors.NewBadRequest(err.Error())
 	}
 	objGVK := objGVKs[0]
 	if gvk != nil && len(gvk.Kind) > 0 {

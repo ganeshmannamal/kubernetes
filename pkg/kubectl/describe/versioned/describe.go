@@ -670,7 +670,9 @@ func describePod(pod *corev1.Pod, events *corev1.EventList) (string, error) {
 		w.Write(LEVEL_0, "Namespace:\t%s\n", pod.Namespace)
 		if pod.Spec.Priority != nil {
 			w.Write(LEVEL_0, "Priority:\t%d\n", *pod.Spec.Priority)
-			w.Write(LEVEL_0, "PriorityClassName:\t%s\n", stringOrNone(pod.Spec.PriorityClassName))
+		}
+		if len(pod.Spec.PriorityClassName) > 0 {
+			w.Write(LEVEL_0, "Priority Class Name:\t%s\n", stringOrNone(pod.Spec.PriorityClassName))
 		}
 		if pod.Spec.NodeName == "" {
 			w.Write(LEVEL_0, "Node:\t<none>\n")
@@ -1964,6 +1966,9 @@ func DescribePodTemplate(template *corev1.PodTemplateSpec, w PrefixWriter) {
 	}
 	describeContainers("Containers", template.Spec.Containers, nil, nil, w, "  ")
 	describeVolumes(template.Spec.Volumes, w, "  ")
+	if len(template.Spec.PriorityClassName) > 0 {
+		w.Write(LEVEL_1, "Priority Class Name:\t%s\n", template.Spec.PriorityClassName)
+	}
 }
 
 // ReplicaSetDescriber generates information about a ReplicaSet and the pods it has created.
@@ -2115,7 +2120,7 @@ func describeCronJob(cronJob *batchv1beta1.CronJob, events *corev1.EventList) (s
 		w.Write(LEVEL_0, "Concurrency Policy:\t%s\n", cronJob.Spec.ConcurrencyPolicy)
 		w.Write(LEVEL_0, "Suspend:\t%s\n", printBoolPtr(cronJob.Spec.Suspend))
 		if cronJob.Spec.SuccessfulJobsHistoryLimit != nil {
-			w.Write(LEVEL_0, "Successful Job History Limit:\t%d\n", cronJob.Spec.SuccessfulJobsHistoryLimit)
+			w.Write(LEVEL_0, "Successful Job History Limit:\t%d\n", *cronJob.Spec.SuccessfulJobsHistoryLimit)
 		} else {
 			w.Write(LEVEL_0, "Successful Job History Limit:\t<unset>\n")
 		}
@@ -2286,7 +2291,7 @@ type IngressDescriber struct {
 }
 
 func (i *IngressDescriber) Describe(namespace, name string, describerSettings describe.DescriberSettings) (string, error) {
-	c := i.ExtensionsV1beta1().Ingresses(namespace)
+	c := i.NetworkingV1beta1().Ingresses(namespace)
 	ing, err := c.Get(name, metav1.GetOptions{})
 	if err != nil {
 		return "", err
@@ -2294,7 +2299,7 @@ func (i *IngressDescriber) Describe(namespace, name string, describerSettings de
 	return i.describeIngress(ing, describerSettings)
 }
 
-func (i *IngressDescriber) describeBackend(ns string, backend *extensionsv1beta1.IngressBackend) string {
+func (i *IngressDescriber) describeBackend(ns string, backend *networkingv1beta1.IngressBackend) string {
 	endpoints, _ := i.CoreV1().Endpoints(ns).Get(backend.ServiceName, metav1.GetOptions{})
 	service, _ := i.CoreV1().Services(ns).Get(backend.ServiceName, metav1.GetOptions{})
 	spName := ""
@@ -2314,7 +2319,7 @@ func (i *IngressDescriber) describeBackend(ns string, backend *extensionsv1beta1
 	return formatEndpoints(endpoints, sets.NewString(spName))
 }
 
-func (i *IngressDescriber) describeIngress(ing *extensionsv1beta1.Ingress, describerSettings describe.DescriberSettings) (string, error) {
+func (i *IngressDescriber) describeIngress(ing *networkingv1beta1.Ingress, describerSettings describe.DescriberSettings) (string, error) {
 	return tabbedString(func(out io.Writer) error {
 		w := NewPrefixWriter(out)
 		w.Write(LEVEL_0, "Name:\t%v\n", ing.Name)
@@ -2325,7 +2330,7 @@ func (i *IngressDescriber) describeIngress(ing *extensionsv1beta1.Ingress, descr
 		if def == nil {
 			// Ingresses that don't specify a default backend inherit the
 			// default backend in the kube-system namespace.
-			def = &extensionsv1beta1.IngressBackend{
+			def = &networkingv1beta1.IngressBackend{
 				ServiceName: "default-http-backend",
 				ServicePort: intstr.IntOrString{Type: intstr.Int, IntVal: 80},
 			}
@@ -2367,7 +2372,7 @@ func (i *IngressDescriber) describeIngress(ing *extensionsv1beta1.Ingress, descr
 	})
 }
 
-func describeIngressTLS(w PrefixWriter, ingTLS []extensionsv1beta1.IngressTLS) {
+func describeIngressTLS(w PrefixWriter, ingTLS []networkingv1beta1.IngressTLS) {
 	w.Write(LEVEL_0, "TLS:\n")
 	for _, t := range ingTLS {
 		if t.SecretName == "" {
@@ -4393,16 +4398,6 @@ func shorten(s string, maxLength int) string {
 	return s
 }
 
-// translateTimestampUntil returns the elapsed time until timestamp in
-// human-readable approximation.
-func translateTimestampUntil(timestamp metav1.Time) string {
-	if timestamp.IsZero() {
-		return "<unknown>"
-	}
-
-	return duration.HumanDuration(time.Until(timestamp.Time))
-}
-
 // translateTimestampSince returns the elapsed time since timestamp in
 // human-readable approximation.
 func translateTimestampSince(timestamp metav1.Time) string {
@@ -4499,7 +4494,7 @@ func extractCSRStatus(csr *certificatesv1beta1.CertificateSigningRequest) (strin
 }
 
 // backendStringer behaves just like a string interface and converts the given backend to a string.
-func backendStringer(backend *extensionsv1beta1.IngressBackend) string {
+func backendStringer(backend *networkingv1beta1.IngressBackend) string {
 	if backend == nil {
 		return ""
 	}

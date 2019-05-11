@@ -66,14 +66,25 @@ function ensure_require_replace_directives_for_all_dependencies() {
   go mod edit -json | jq -r ".Require // [] | sort | .[] | select(${require_filter})" > "${require_json}"
   go mod edit -json | jq -r ".Replace // [] | sort | .[] | select(${replace_filter})" > "${replace_json}"
 
-  # 1. Ensure require directives have a corresponding replace directive pinning a version
+  # 1a. Ensure replace directives have an explicit require directive
+  cat "${replace_json}" | jq -r '"-require \(.Old.Path)@\(.New.Version)"'             | xargs -L 100 go mod edit -fmt
+  # 1b. Ensure require directives have a corresponding replace directive pinning a version
   cat "${require_json}" | jq -r '"-replace \(.Path)=\(.Path)@\(.Version)"'            | xargs -L 100 go mod edit -fmt
   cat "${replace_json}" | jq -r '"-replace \(.Old.Path)=\(.New.Path)@\(.New.Version)"'| xargs -L 100 go mod edit -fmt
 
-  # 2. Add explicit require directives for indirect dependencies
+  # 2. Propagate root replace/require directives into staging modules, in case we are downgrading, so they don't bump the root required version back up
+  for repo in $(ls staging/src/k8s.io); do
+    pushd "staging/src/k8s.io/${repo}" >/dev/null 2>&1
+      cat "${require_json}" | jq -r '"-require \(.Path)@\(.Version)"'                     | xargs -L 100 go mod edit -fmt
+      cat "${require_json}" | jq -r '"-replace \(.Path)=\(.Path)@\(.Version)"'            | xargs -L 100 go mod edit -fmt
+      cat "${replace_json}" | jq -r '"-replace \(.Old.Path)=\(.New.Path)@\(.New.Version)"'| xargs -L 100 go mod edit -fmt
+    popd >/dev/null 2>&1
+  done
+
+  # 3. Add explicit require directives for indirect dependencies
   go list -m -json all | jq -r 'select(.Main != true) | select(.Indirect == true) | "-require \(.Path)@\(.Version)"'          | xargs -L 100 go mod edit -fmt
 
-  # 3. Add explicit replace directives pinning dependencies that aren't pinned yet
+  # 4. Add explicit replace directives pinning dependencies that aren't pinned yet
   go list -m -json all | jq -r 'select(.Main != true) | select(.Replace == null)  | "-replace \(.Path)=\(.Path)@\(.Version)"' | xargs -L 100 go mod edit -fmt
 }
 
@@ -229,7 +240,20 @@ kube::log::status "go.mod: tidying"
 for repo in $(tsort "${TMP_DIR}/tidy_deps.txt"); do
   pushd "${KUBE_ROOT}/staging/src/${repo}" >/dev/null 2>&1
     echo "=== tidying ${repo}" >> "${LOG_FILE}"
-    go mod tidy >>"${LOG_FILE}" 2>&1
+
+    # prune replace directives that pin to the naturally selected version.
+    # do this before tidying, since tidy removes unused modules that
+    # don't provide any relevant packages, which forgets which version of the 
+    # unused transitive dependency we had a require directive for,
+    # and prevents pruning the matching replace directive after tidying.
+    go list -m -json all |
+      jq -r 'select(.Replace != null) | 
+             select(.Path == .Replace.Path) | 
+             select(.Version == .Replace.Version) | 
+             "-dropreplace \(.Replace.Path)"' |
+    xargs -L 100 go mod edit -fmt
+
+    go mod tidy -v >>"${LOG_FILE}" 2>&1
 
     # disallow transitive dependencies on k8s.io/kubernetes
     loopback_deps="$(go list all 2>/dev/null | grep k8s.io/kubernetes/ || true)"

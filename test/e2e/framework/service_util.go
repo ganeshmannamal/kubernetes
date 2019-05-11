@@ -40,6 +40,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/registry/core/service/portallocator"
+	e2essh "k8s.io/kubernetes/test/e2e/framework/ssh"
 	testutils "k8s.io/kubernetes/test/utils"
 	imageutils "k8s.io/kubernetes/test/utils/image"
 
@@ -320,7 +321,7 @@ func (j *ServiceTestJig) CreateLoadBalancerService(namespace, serviceName string
 func GetNodeAddresses(node *v1.Node, addressType v1.NodeAddressType) (ips []string) {
 	for j := range node.Status.Addresses {
 		nodeAddress := &node.Status.Addresses[j]
-		if nodeAddress.Type == addressType {
+		if nodeAddress.Type == addressType && nodeAddress.Address != "" {
 			ips = append(ips, nodeAddress.Address)
 		}
 	}
@@ -507,7 +508,7 @@ func (j *ServiceTestJig) UpdateService(namespace, name string, update func(*v1.S
 	for i := 0; i < 3; i++ {
 		service, err := j.Client.CoreV1().Services(namespace).Get(name, metav1.GetOptions{})
 		if err != nil {
-			return nil, fmt.Errorf("Failed to get Service %q: %v", name, err)
+			return nil, fmt.Errorf("failed to get Service %q: %v", name, err)
 		}
 		update(service)
 		service, err = j.Client.CoreV1().Services(namespace).Update(service)
@@ -515,10 +516,10 @@ func (j *ServiceTestJig) UpdateService(namespace, name string, update func(*v1.S
 			return service, nil
 		}
 		if !errors.IsConflict(err) && !errors.IsServerTimeout(err) {
-			return nil, fmt.Errorf("Failed to update Service %q: %v", name, err)
+			return nil, fmt.Errorf("failed to update Service %q: %v", name, err)
 		}
 	}
-	return nil, fmt.Errorf("Too many retries updating Service %q", name)
+	return nil, fmt.Errorf("too many retries updating Service %q", name)
 }
 
 // UpdateServiceOrFail fetches a service, calls the update function on it, and
@@ -573,10 +574,7 @@ func (j *ServiceTestJig) ChangeServiceNodePortOrFail(namespace, name string, ini
 func (j *ServiceTestJig) WaitForLoadBalancerOrFail(namespace, name string, timeout time.Duration) *v1.Service {
 	Logf("Waiting up to %v for service %q to have a LoadBalancer", timeout, name)
 	service := j.waitForConditionOrFail(namespace, name, timeout, "have a load balancer", func(svc *v1.Service) bool {
-		if len(svc.Status.LoadBalancer.Ingress) > 0 {
-			return true
-		}
-		return false
+		return len(svc.Status.LoadBalancer.Ingress) > 0
 	})
 	return service
 }
@@ -591,10 +589,7 @@ func (j *ServiceTestJig) WaitForLoadBalancerDestroyOrFail(namespace, name string
 
 	Logf("Waiting up to %v for service %q to have no LoadBalancer", timeout, name)
 	service := j.waitForConditionOrFail(namespace, name, timeout, "have no load balancer", func(svc *v1.Service) bool {
-		if len(svc.Status.LoadBalancer.Ingress) == 0 {
-			return true
-		}
-		return false
+		return len(svc.Status.LoadBalancer.Ingress) == 0
 	})
 	return service
 }
@@ -757,7 +752,6 @@ func (j *ServiceTestJig) Scale(namespace string, replicas int) {
 	if err := j.waitForPodsReady(namespace, pods); err != nil {
 		Failf("Failed waiting for pods to be running: %v", err)
 	}
-	return
 }
 
 func (j *ServiceTestJig) waitForPdbReady(namespace string) error {
@@ -772,7 +766,7 @@ func (j *ServiceTestJig) waitForPdbReady(namespace string) error {
 		}
 	}
 
-	return fmt.Errorf("Timeout waiting for PDB %q to be ready", j.Name)
+	return fmt.Errorf("timeout waiting for PDB %q to be ready", j.Name)
 }
 
 func (j *ServiceTestJig) waitForPodsCreated(namespace string, replicas int) ([]string, error) {
@@ -800,13 +794,13 @@ func (j *ServiceTestJig) waitForPodsCreated(namespace string, replicas int) ([]s
 		}
 		Logf("Found %d/%d pods - will retry", len(found), replicas)
 	}
-	return nil, fmt.Errorf("Timeout waiting for %d pods to be created", replicas)
+	return nil, fmt.Errorf("timeout waiting for %d pods to be created", replicas)
 }
 
 func (j *ServiceTestJig) waitForPodsReady(namespace string, pods []string) error {
 	timeout := 2 * time.Minute
 	if !CheckPodsRunningReady(j.Client, namespace, pods, timeout) {
-		return fmt.Errorf("Timeout waiting for %d pods to be ready", len(pods))
+		return fmt.Errorf("timeout waiting for %d pods to be ready", len(pods))
 	}
 	return nil
 }
@@ -1010,7 +1004,7 @@ func testHTTPHealthCheckNodePort(ip string, port int, request string) (bool, err
 	url := fmt.Sprintf("http://%s%s", ipPort, request)
 	if ip == "" || port == 0 {
 		Failf("Got empty IP for reachability check (%s)", url)
-		return false, fmt.Errorf("Invalid input ip or port")
+		return false, fmt.Errorf("invalid input ip or port")
 	}
 	Logf("Testing HTTP health check on %v", url)
 	resp, err := httpGetNoConnectionPoolTimeout(url, 5*time.Second)
@@ -1031,7 +1025,7 @@ func testHTTPHealthCheckNodePort(ip string, port int, request string) (bool, err
 	if resp.StatusCode == 200 {
 		return true, nil
 	}
-	return false, fmt.Errorf("Unexpected HTTP response code %s from health check responder at %s", resp.Status, url)
+	return false, fmt.Errorf("unexpected HTTP response code %s from health check responder at %s", resp.Status, url)
 }
 
 func (j *ServiceTestJig) TestHTTPHealthCheckNodePort(host string, port int, request string, timeout time.Duration, expectSucceed bool, threshold int) error {
@@ -1104,20 +1098,6 @@ func (t *ServiceTestFixture) BuildServiceSpec() *v1.Service {
 		},
 	}
 	return service
-}
-
-// CreateWebserverRC creates rc-backed pods with the well-known webserver
-// configuration and records it for cleanup.
-func (t *ServiceTestFixture) CreateWebserverRC(replicas int32) *v1.ReplicationController {
-	rcSpec := RcByNamePort(t.Name, replicas, t.Image, 80, v1.ProtocolTCP, t.Labels, nil)
-	rcAct, err := t.CreateRC(rcSpec)
-	if err != nil {
-		Failf("Failed to create rc %s: %v", rcSpec.Name, err)
-	}
-	if err := VerifyPods(t.Client, t.Namespace, t.Name, false, replicas); err != nil {
-		Failf("Failed to create %d pods with name %s: %v", replicas, t.Name, err)
-	}
-	return rcAct
 }
 
 // CreateRC creates a replication controller and records it for cleanup.
@@ -1349,7 +1329,7 @@ func StartServeHostnameService(c clientset.Interface, svc *v1.Service, ns string
 	}
 
 	if len(createdPods) != replicas {
-		return podNames, "", fmt.Errorf("Incorrect number of running pods: %v", len(createdPods))
+		return podNames, "", fmt.Errorf("incorrect number of running pods: %v", len(createdPods))
 	}
 
 	for i := range createdPods {
@@ -1362,7 +1342,7 @@ func StartServeHostnameService(c clientset.Interface, svc *v1.Service, ns string
 		return podNames, "", err
 	}
 	if service.Spec.ClusterIP == "" {
-		return podNames, "", fmt.Errorf("Service IP is blank for %v", name)
+		return podNames, "", fmt.Errorf("service IP is blank for %v", name)
 	}
 	serviceIP := service.Spec.ClusterIP
 	return podNames, serviceIP, nil
@@ -1400,9 +1380,9 @@ func VerifyServeHostnameServiceUp(c clientset.Interface, ns, host string, expect
 		func() string {
 			cmd := "set -e; " + buildCommand("wget -q --timeout=0.2 --tries=1 -O -")
 			Logf("Executing cmd %q on host %v", cmd, host)
-			result, err := SSH(cmd, host, TestContext.Provider)
+			result, err := e2essh.SSH(cmd, host, TestContext.Provider)
 			if err != nil || result.Code != 0 {
-				LogSSHResult(result)
+				e2essh.LogResult(result)
 				Logf("error while SSH-ing to node: %v", err)
 			}
 			return result.Stdout
@@ -1468,9 +1448,9 @@ func VerifyServeHostnameServiceDown(c clientset.Interface, host string, serviceI
 		"curl -g -s --connect-timeout 2 http://%s && exit 99", ipPort)
 
 	for start := time.Now(); time.Since(start) < time.Minute; time.Sleep(5 * time.Second) {
-		result, err := SSH(command, host, TestContext.Provider)
+		result, err := e2essh.SSH(command, host, TestContext.Provider)
 		if err != nil {
-			LogSSHResult(result)
+			e2essh.LogResult(result)
 			Logf("error while SSH-ing to node: %v", err)
 		}
 		if result.Code != 99 {
@@ -1481,6 +1461,7 @@ func VerifyServeHostnameServiceDown(c clientset.Interface, host string, serviceI
 	return fmt.Errorf("waiting for service to be down timed out")
 }
 
+// CleanupServiceResources cleans up service Type=LoadBalancer resources.
 func CleanupServiceResources(c clientset.Interface, loadBalancerName, region, zone string) {
 	TestContext.CloudConfig.Provider.CleanupServiceResources(c, loadBalancerName, region, zone)
 }

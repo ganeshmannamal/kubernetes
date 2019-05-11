@@ -1283,7 +1283,6 @@ ETCD_CA_KEY: $(yaml-quote ${ETCD_CA_KEY_BASE64:-})
 ETCD_CA_CERT: $(yaml-quote ${ETCD_CA_CERT_BASE64:-})
 ETCD_PEER_KEY: $(yaml-quote ${ETCD_PEER_KEY_BASE64:-})
 ETCD_PEER_CERT: $(yaml-quote ${ETCD_PEER_CERT_BASE64:-})
-ENCRYPTION_PROVIDER_CONFIG: $(yaml-quote ${ENCRYPTION_PROVIDER_CONFIG:-})
 SERVICEACCOUNT_ISSUER: $(yaml-quote ${SERVICEACCOUNT_ISSUER:-})
 EOF
     # KUBE_APISERVER_REQUEST_TIMEOUT_SEC (if set) controls the --request-timeout
@@ -2031,7 +2030,9 @@ function create-node-template() {
   if [[ "${os}" == 'linux' ]]; then
       node_image_flags="--image-project ${NODE_IMAGE_PROJECT} --image ${NODE_IMAGE}"
   elif [[ "${os}" == 'windows' ]]; then
-      node_image_flags="--image-project ${WINDOWS_NODE_IMAGE_PROJECT} --image-family ${WINDOWS_NODE_IMAGE_FAMILY}"
+      # TODO(pjh): revert back to using WINDOWS_NODE_IMAGE_FAMILY instead of
+      # pinning to the v20190312 image once #76666 is resolved.
+      node_image_flags="--image-project ${WINDOWS_NODE_IMAGE_PROJECT} --image=windows-server-1809-dc-core-for-containers-v20190312"
   else
       echo "Unknown OS ${os}" >&2
       exit 1

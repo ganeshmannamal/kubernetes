@@ -24,7 +24,7 @@ package testsuites
 import (
 	"fmt"
 
-	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -98,6 +98,9 @@ func (t *volumesTestSuite) defineTests(driver TestDriver, pattern testpatterns.T
 		testCleanup func()
 
 		resource *genericVolumeTestResource
+
+		intreeOps   opCounts
+		migratedOps opCounts
 	}
 	var dInfo = driver.GetDriverInfo()
 	var l local
@@ -119,6 +122,8 @@ func (t *volumesTestSuite) defineTests(driver TestDriver, pattern testpatterns.T
 		if l.resource.volSource == nil {
 			framework.Skipf("Driver %q does not define volumeSource - skipping", dInfo.Name)
 		}
+
+		l.intreeOps, l.migratedOps = getMigrationVolumeOpCounts(f.ClientSet, dInfo.InTreePluginName)
 	}
 
 	cleanup := func() {
@@ -131,9 +136,11 @@ func (t *volumesTestSuite) defineTests(driver TestDriver, pattern testpatterns.T
 			l.testCleanup()
 			l.testCleanup = nil
 		}
+
+		validateMigrationVolumeOpCounts(f.ClientSet, dInfo.InTreePluginName, l.intreeOps, l.migratedOps)
 	}
 
-	It("should be mountable", func() {
+	ginkgo.It("should be mountable", func() {
 		skipPersistenceTest(driver)
 		init()
 		defer func() {
@@ -164,7 +171,7 @@ func (t *volumesTestSuite) defineTests(driver TestDriver, pattern testpatterns.T
 		volume.TestVolumeClient(f.ClientSet, config, fsGroup, pattern.FsType, tests)
 	})
 
-	It("should allow exec of files on the volume", func() {
+	ginkgo.It("should allow exec of files on the volume", func() {
 		skipExecTest(driver)
 		init()
 		defer cleanup()
@@ -222,10 +229,10 @@ func testScriptInPod(
 			NodeName:      config.ClientNodeName,
 		},
 	}
-	By(fmt.Sprintf("Creating pod %s", pod.Name))
+	ginkgo.By(fmt.Sprintf("Creating pod %s", pod.Name))
 	f.TestContainerOutput("exec-volume-test", pod, 0, []string{fileName})
 
-	By(fmt.Sprintf("Deleting pod %s", pod.Name))
+	ginkgo.By(fmt.Sprintf("Deleting pod %s", pod.Name))
 	err := framework.DeletePodWithWait(f, f.ClientSet, pod)
 	framework.ExpectNoError(err, "while deleting pod")
 }

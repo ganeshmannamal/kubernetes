@@ -550,17 +550,7 @@ var _ volume.AttachableVolumePlugin = &csiPlugin{}
 var _ volume.DeviceMountableVolumePlugin = &csiPlugin{}
 
 func (p *csiPlugin) NewAttacher() (volume.Attacher, error) {
-	k8s := p.host.GetKubeClient()
-	if k8s == nil {
-		klog.Error(log("unable to get kubernetes client from host"))
-		return nil, errors.New("unable to get Kubernetes client")
-	}
-
-	return &csiAttacher{
-		plugin:        p,
-		k8s:           k8s,
-		waitSleepTime: 1 * time.Second,
-	}, nil
+	return p.newAttacherDetacher()
 }
 
 func (p *csiPlugin) NewDeviceMounter() (volume.DeviceMounter, error) {
@@ -568,17 +558,7 @@ func (p *csiPlugin) NewDeviceMounter() (volume.DeviceMounter, error) {
 }
 
 func (p *csiPlugin) NewDetacher() (volume.Detacher, error) {
-	k8s := p.host.GetKubeClient()
-	if k8s == nil {
-		klog.Error(log("unable to get kubernetes client from host"))
-		return nil, errors.New("unable to get Kubernetes client")
-	}
-
-	return &csiAttacher{
-		plugin:        p,
-		k8s:           k8s,
-		waitSleepTime: 1 * time.Second,
-	}, nil
+	return p.newAttacherDetacher()
 }
 
 func (p *csiPlugin) CanAttach(spec *volume.Spec) (bool, error) {
@@ -607,8 +587,18 @@ func (p *csiPlugin) CanAttach(spec *volume.Spec) (bool, error) {
 	return !skipAttach, nil
 }
 
-// TODO (#75352) add proper logic to determine device moutability by inspecting the spec.
+// CanDeviceMount returns true if the spec supports device mount
 func (p *csiPlugin) CanDeviceMount(spec *volume.Spec) (bool, error) {
+	driverMode, err := p.getDriverMode(spec)
+	if err != nil {
+		return false, err
+	}
+
+	if driverMode == ephemeralDriverMode {
+		klog.V(5).Info(log("plugin.CanDeviceMount skipped ephemeral mode detected for spec %v", spec.Name()))
+		return false, nil
+	}
+
 	return true, nil
 }
 
@@ -755,7 +745,7 @@ func (p *csiPlugin) ConstructBlockVolumeSpec(podUID types.UID, specVolName, mapP
 }
 
 // skipAttach looks up CSIDriver object associated with driver name
-// to determine if driver requies attachment volume operation
+// to determine if driver requires attachment volume operation
 func (p *csiPlugin) skipAttach(driver string) (bool, error) {
 	if !utilfeature.DefaultFeatureGate.Enabled(features.CSIDriverRegistry) {
 		return false, nil
@@ -827,6 +817,20 @@ func (p *csiPlugin) getPublishContext(client clientset.Interface, handle, driver
 	return attachment.Status.AttachmentMetadata, nil
 }
 
+func (p *csiPlugin) newAttacherDetacher() (*csiAttacher, error) {
+	k8s := p.host.GetKubeClient()
+	if k8s == nil {
+		klog.Error(log("unable to get kubernetes client from host"))
+		return nil, errors.New("unable to get Kubernetes client")
+	}
+
+	return &csiAttacher{
+		plugin:        p,
+		k8s:           k8s,
+		waitSleepTime: 1 * time.Second,
+	}, nil
+}
+
 func unregisterDriver(driverName string) error {
 	csiDrivers.Delete(driverName)
 
@@ -893,13 +897,4 @@ func isV0Version(version string) bool {
 	}
 
 	return parsedVersion.Major() == 0
-}
-
-func isV1Version(version string) bool {
-	parsedVersion, err := utilversion.ParseGeneric(version)
-	if err != nil {
-		return false
-	}
-
-	return parsedVersion.Major() == 1
 }

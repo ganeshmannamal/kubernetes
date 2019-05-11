@@ -209,6 +209,7 @@ aliases:
     - dcbw
     - dnardo
     - freehan
+    - johnbelamaric
     - mrhohn
     - nicksardo
     - thockin
@@ -219,25 +220,32 @@ aliases:
     - dcbw
     - dnardo
     - freehan
+    - johnbelamaric
     - mrhohn
     - nicksardo
     - thockin
     - rramkumar1
+    - cmluciano
+  sig-apps-approvers:
+    - kow3ns
+    - janetkuo
+    - soltysh
+    - tnozicka
+    - erictune
+    - smarterclayton
   sig-apps-reviewers:
     - enisoc
     - erictune
     - foxish
     - janetkuo
     - kow3ns
-    - lukaszo
-    - mfojtik
+    - mortent
     - smarterclayton
     - soltysh
     - tnozicka
   sig-autoscaling-maintainers:
     - aleksandra-malinowska
     - bskiba
-    - DirectXMan12
     - MaciekPytel
     - mwielgus
 
@@ -279,6 +287,12 @@ aliases:
 
   sig-network-api-approvers:
     - smarterclayton
+    - thockin
+
+  sig-network-api-reviewers:
+    - caseydavenport
+    - cmluciano
+    - danwinship
     - thockin
 
   sig-node-api-approvers:
@@ -339,49 +353,49 @@ aliases:
   # api-reviewers targeted by sig area
   # see https://git.k8s.io/community/sig-architecture/api-review-process.md#training-reviews
   
-  # sig-api-machinery-api-reviewers:
-  #   - 
-  #   - 
+  sig-api-machinery-api-reviewers:
+    - caesarxuchao
+    - deads2k
+    - jpbetz
+    - sttts
   
   # sig-apps-api-reviewers:
   #   - 
   #   - 
-  
-  # sig-auth-api-reviewers:
-  #   - 
-  #   - 
-  
-  # sig-cli-api-reviewers:
-  #   - 
-  #   - 
-  
-  # sig-cloud-provider-api-reviewers:
-  #   - 
-  #   - 
+
+  sig-auth-api-reviewers:
+    - enj
+    - mikedanese
+
+  sig-cli-api-reviewers:
+    - pwittrock
+    - soltysh
+
+  sig-cloud-provider-api-reviewers:
+    - andrewsykim
+    - cheftako
   
   # sig-cluster-lifecycle-api-reviewers:
   #   - 
-  #   - 
-  
-  # sig-network-api-reviewers:
-  #   - 
-  #   - 
+  #   -
   
   # sig-node-api-reviewers:
   #   - 
   #   - 
   
-  # sig-scheduling-api-reviewers:
-  #   - 
-  #   - 
+  sig-scheduling-api-reviewers:
+      - bsalamat
+      - k82cn
   
-  # sig-storage-api-reviewers:
-  #   - 
-  #   - 
+  sig-storage-api-reviewers:
+    - saad-ali
+    - msau42
+    - jsafrane
+
   
-  # sig-windows-api-reviewers:
-  #   - 
-  #   - 
+  sig-windows-api-reviewers:
+    - patricklang
+    - michmike
 
   dep-approvers:
     - apelisse
@@ -405,7 +419,6 @@ aliases:
     - deads2k         # API Machinery
     - derekwaynecarr  # Node
     - dghubble        # On Premise
-    - directxman12    # Autoscaling
     - jdumars         # Architecture, Cluster Ops, Release
     - kow3ns          # Apps
     - lavalamp        # API Machinery

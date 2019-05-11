@@ -30,6 +30,8 @@ import (
 	podutil "k8s.io/kubernetes/pkg/api/v1/pod"
 	commonutils "k8s.io/kubernetes/test/e2e/common"
 	"k8s.io/kubernetes/test/e2e/framework"
+	"k8s.io/kubernetes/test/e2e/framework/auth"
+	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	"k8s.io/kubernetes/test/e2e/framework/testfiles"
 
 	. "github.com/onsi/ginkgo"
@@ -51,10 +53,11 @@ var _ = framework.KubeDescribe("[Feature:Example]", func() {
 
 		// this test wants powerful permissions.  Since the namespace names are unique, we can leave this
 		// lying around so we don't have to race any caches
-		framework.BindClusterRoleInNamespace(c.RbacV1beta1(), "edit", f.Namespace.Name,
+		err := auth.BindClusterRoleInNamespace(c.RbacV1beta1(), "edit", f.Namespace.Name,
 			rbacv1beta1.Subject{Kind: rbacv1beta1.ServiceAccountKind, Namespace: f.Namespace.Name, Name: "default"})
+		framework.ExpectNoError(err)
 
-		err := framework.WaitForAuthorizationUpdate(c.AuthorizationV1beta1(),
+		err = auth.WaitForAuthorizationUpdate(c.AuthorizationV1beta1(),
 			serviceaccount.MakeUsername(f.Namespace.Name, "default"),
 			f.Namespace.Name, "create", schema.GroupResource{Resource: "pods"}, true)
 		framework.ExpectNoError(err)
@@ -80,14 +83,14 @@ var _ = framework.KubeDescribe("[Feature:Example]", func() {
 					pod, err := c.CoreV1().Pods(ns).Get(podName, metav1.GetOptions{})
 					framework.ExpectNoError(err, fmt.Sprintf("getting pod %s", podName))
 					stat := podutil.GetExistingContainerStatus(pod.Status.ContainerStatuses, podName)
-					framework.Logf("Pod: %s, restart count:%d", stat.Name, stat.RestartCount)
+					e2elog.Logf("Pod: %s, restart count:%d", stat.Name, stat.RestartCount)
 					if stat.RestartCount > 0 {
-						framework.Logf("Saw %v restart, succeeded...", podName)
+						e2elog.Logf("Saw %v restart, succeeded...", podName)
 						wg.Done()
 						return
 					}
 				}
-				framework.Logf("Failed waiting for %v restart! ", podName)
+				e2elog.Logf("Failed waiting for %v restart! ", podName)
 				passed = false
 				wg.Done()
 			}

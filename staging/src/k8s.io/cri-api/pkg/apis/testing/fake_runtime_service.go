@@ -181,8 +181,9 @@ func (r *FakeRuntimeService) RunPodSandbox(config *runtimeapi.PodSandboxConfig, 
 			Network: &runtimeapi.PodSandboxNetworkStatus{
 				Ip: FakePodSandboxIP,
 			},
-			Labels:      config.Labels,
-			Annotations: config.Annotations,
+			Labels:         config.Labels,
+			Annotations:    config.Annotations,
+			RuntimeHandler: runtimeHandler,
 		},
 		RuntimeHandler: runtimeHandler,
 	}
@@ -253,12 +254,13 @@ func (r *FakeRuntimeService) ListPodSandbox(filter *runtimeapi.PodSandboxFilter)
 		}
 
 		result = append(result, &runtimeapi.PodSandbox{
-			Id:          s.Id,
-			Metadata:    s.Metadata,
-			State:       s.State,
-			CreatedAt:   s.CreatedAt,
-			Labels:      s.Labels,
-			Annotations: s.Annotations,
+			Id:             s.Id,
+			Metadata:       s.Metadata,
+			State:          s.State,
+			CreatedAt:      s.CreatedAt,
+			Labels:         s.Labels,
+			Annotations:    s.Annotations,
+			RuntimeHandler: s.RuntimeHandler,
 		})
 	}
 
@@ -407,6 +409,10 @@ func (r *FakeRuntimeService) ContainerStatus(containerID string) (*runtimeapi.Co
 }
 
 func (r *FakeRuntimeService) UpdateContainerResources(string, *runtimeapi.LinuxContainerResources) error {
+	r.Lock()
+	defer r.Unlock()
+
+	r.Called = append(r.Called, "UpdateContainerResources")
 	return nil
 }
 
